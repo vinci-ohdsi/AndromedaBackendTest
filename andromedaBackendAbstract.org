@@ -11,10 +11,6 @@
 
 Set org-mode global vars for use across R renv's within this notebook 
 
-Number of rows in simulated database 
-#+NAME: nrows
-| 10000000 |
-
 Number of /batchApply()/ repetitions 
 #+NAME: nreps
 | 5      | 
@@ -23,11 +19,22 @@ Define list of test functions
 
 #+begin_src R :session s1 :dir c:/andromedaDatabaseAbstract 
 
-  fns <- list(mean = \(x) mean(x$value),
-              filter = \(x) x$value[x$value < .01],
-              groupSumm = \(x) dplyr::group_by(x, group) %>%
-                               dplyr::summarize(meanValue = mean(x$value)))
+  library(dplyr)
 
+  nPersons <- 500000
+  nCovariates <- 150 
+
+  fns <- list(mean = \(x) mean(x$covariateValue),
+              filter = \(x) sum(x$covariateValue == 1L),
+              groupSumm = \(x) dplyr::group_by(x, cohortId) %>%
+                               dplyr::summarize(meanValue = mean(x$covariateValue)))
+
+  df <- expand.grid(1:nPersons, 1:nCovariates) %>%
+    setNames(c('personId', 'covariateId')) %>%
+    mutate(covariateValue = sample(0:1L, size = nrow(.), prob = c(.9, .1), replace = TRUE),
+           cohortId = sample(0:1L, size = nrow(.), prob = c(.5, .5), replace = TRUE))
+
+  saveRDS(df, './df.RDS') 
   saveRDS(fns, './fns.RDS')
 
 #+end_src
@@ -38,17 +45,15 @@ Define list of test functions
 
 This code block uses the SQLite backend from the Andromeda main branch
 
-#+name: sqlite-times 
-#+begin_src R :session andromeda-sqlite :dir ./andromedaSqlite :exports code :var nrows=nrows :var nreps=nreps :results value table 
+#+begin_src R :session andromeda-sqlite :dir ./andromedaSqlite :exports code :var nreps=nreps 
 
+  
   library(Andromeda)
+  df <- readRDS('../df.RDS') 
   fns <- readRDS('../fns.RDS') 
-  set.seed(1)
 
   andromeda <- andromeda()
-
-  andromeda$data <- data.frame(group = sample(0:1, size = nrows[1,1], replace = TRUE),
-                               value = runif(n=nrows[1,1]))
+  andromeda$data <- df
 
   runTest <- function() {
     results <- sapply(fns,
@@ -60,29 +65,16 @@ This code block uses the SQLite backend from the Andromeda main branch
                       } 
                       )
 
-    data.frame(db = 'SQLite', fn = names(fns), runTimeSeconds = results) 
+    data.frame(db = 'SQLite', fn = names(fns), runTimeSeconds = results, row.names = NULL) 
   }
 
-  Reduce(bind_rows, lapply(1:nreps[1,1], \(x) runTest())) 
+  saveRDS(Reduce(bind_rows, lapply(1:nreps[1,1], \(x) runTest())),
+          '../sqlite-times.RDS')
 
 #+end_src
 
-#+RESULTS: sqlite-times
-| SQLite | mean      | 18.0514400005341 |
-| SQLite | filter    | 17.9141628742218 |
-| SQLite | groupSumm | 18.5683200359344 |
-| SQLite | mean      | 19.2234578132629 |
-| SQLite | filter    | 19.1031818389893 |
-| SQLite | groupSumm | 18.7453920841217 |
-| SQLite | mean      | 19.0321750640869 |
-| SQLite | filter    | 18.9784891605377 |
-| SQLite | groupSumm | 18.8362920284271 |
-| SQLite | mean      | 17.7677090167999 |
-| SQLite | filter    | 18.1939840316772 |
-| SQLite | groupSumm | 18.7508180141449 |
-| SQLite | mean      | 23.1512069702148 |
-| SQLite | filter    | 20.0993092060089 |
-| SQLite | groupSumm | 19.7350361347198 |
+#+RESULTS:
+
 
 #+begin_src R :session andromeda-sqlite :dir ./andromedaSqlite :results output :exports both 
   
@@ -92,10 +84,10 @@ This code block uses the SQLite backend from the Andromeda main branch
 
 #+RESULTS:
 : [90m# Andromeda object[39m
-: [90m# Physical location:  C:\Users\VHASLC~1\AppData\Local\Temp\1\RtmpuE4Qqg\file43286fd72bd1.sqlite[39m
+: [90m# Physical location:  C:\Users\VHASLC~1\AppData\Local\Temp\1\RtmpuE4Qqg\file43284d105eac.sqlite[39m
 : 
 : Tables:
-: $data (group, value)
+: $data (personId, covariateId, covariateValue, cohortId)
 
 
 ** DuckDB back-end
@@ -103,16 +95,14 @@ This code block uses the SQLite backend from the Andromeda main branch
 This uses the DuckDB backend from the Andromeda duckdb2 branch 
 
 #+name: duckdb-times 
-#+begin_src R :session andromeda-duckdb :dir ./andromedaDuckDb  :exports code  :var nrows=nrows :var nreps=nreps
+#+begin_src R :session andromeda-duckdb :dir ./andromedaDuckDb  :exports code  :var nreps=nreps
 
   library(Andromeda)
+  df <- readRDS('../df.RDS') 
   fns <- readRDS('../fns.RDS') 
-  set.seed(1)
 
   andromeda <- andromeda()
-
-  andromeda$data <- data.frame(group = sample(0:1, size = nrows[1,1], replace = TRUE),
-                               value = runif(n=nrows[1,1]))
+  andromeda$data <- df
 
   runTest <- function() {
     results <- sapply(fns,
@@ -124,29 +114,16 @@ This uses the DuckDB backend from the Andromeda duckdb2 branch
                       } 
                       )
 
-    data.frame(db = 'DuckDB', fn = names(fns), runTimeSeconds = results) 
+    data.frame(db = 'DuckDB', fn = names(fns), runTimeSeconds = results, row.names = NULL) 
   }
 
-  Reduce(bind_rows, lapply(1:nreps[1,1], \(x) runTest()))
+  saveRDS(Reduce(bind_rows, lapply(1:nreps[1,1], \(x) runTest())),
+          '../duckdb-times.RDS')
 
 #+end_src
 
 #+RESULTS: duckdb-times
-| DuckDB | mean      | 2.73550295829773 |
-| DuckDB | filter    | 2.73404717445374 |
-| DuckDB | groupSumm | 3.45954203605652 |
-| DuckDB | mean      | 3.05329608917236 |
-| DuckDB | filter    | 2.80071997642517 |
-| DuckDB | groupSumm | 3.30366516113281 |
-| DuckDB | mean      | 2.72037076950073 |
-| DuckDB | filter    | 3.10197496414185 |
-| DuckDB | groupSumm |  4.1000120639801 |
-| DuckDB | mean      | 3.20873689651489 |
-| DuckDB | filter    | 3.58746790885925 |
-| DuckDB | groupSumm | 3.84196519851685 |
-| DuckDB | mean      | 3.20259499549866 |
-| DuckDB | filter    | 3.52941203117371 |
-| DuckDB | groupSumm | 4.22183799743652 |
+
 
 #+begin_src R :session andromeda-duckdb :dir ./andromedaDuckDB :results output :exports both 
   
@@ -156,32 +133,32 @@ This uses the DuckDB backend from the Andromeda duckdb2 branch
 
 #+RESULTS:
 : [90m# Andromeda object[39m
-: [90m# Physical location:  C:\Users\VHASLCObrieW1\AppData\Local\Temp\1\Rtmp2LqKQc\file4aec70cc6172.duckdb[39m
+: [90m# Physical location:  C:\Users\VHASLCObrieW1\AppData\Local\Temp\1\Rtmp2LqKQc\file4aec18ed649b.duckdb[39m
 : 
 : Tables:
-: $data (group, value)
+: $data (personId, covariateId, covariateValue, cohortId)
 
 
 ** batchApply results 
 
-#+begin_src R :session s1 :var s=sqlite-times d=duckdb-times :results graphics :file ./boxplot.jpg 
+#+begin_src R :session s1 :results graphics :file ./boxplot.jpg 
 
   library(ggplot2)
   library(tidyr)
 
-  rbind(s, d) %>%
-      setNames(c('Database', 'Function', 'Time')) %>% 
-      ggplot() +
-        geom_boxplot(aes(Database, y = Time)) +
-        facet_wrap(~Function) + 
-        labs(title = 'Execution time for benchmark',
-             y = 'Seconds')  
+  rbind(readRDS('./sqlite-times.RDS'),
+        readRDS('./duckdb-times.RDS')) %>%
+    ggplot() +
+    geom_boxplot(aes(db, y = runTimeSeconds)) +
+    facet_wrap(~fn) + 
+    labs(title = 'Execution time for benchmark',
+         y = 'Seconds')  
 
 #+end_src
 
 #+RESULTS:
 
-[[./boxplot.jpg]]
+[[./boxplot.jpg]] 
 
 
 ** saveAndromeda results
@@ -196,7 +173,7 @@ This uses the DuckDB backend from the Andromeda duckdb2 branch
 #+end_src
 
 #+RESULTS:
-: SQLite save time was 6.3 seconds
+: SQLite save time was 23.8 seconds
 
 *** DuckDB
 #+begin_src R :session andromeda-duckdb :exports both 
@@ -209,7 +186,7 @@ This uses the DuckDB backend from the Andromeda duckdb2 branch
 #+end_src
 
 #+RESULTS:
-: DuckDB save time was 4.5 seconds
+: DuckDB save time was 1.1 seconds
 
 ** loadAndromeda results 
 *** SQLite
@@ -224,7 +201,7 @@ This uses the DuckDB backend from the Andromeda duckdb2 branch
 #+end_src
 
 #+RESULTS:
-: SQLite load time was 1.8 seconds
+: SQLite load time was 8.3 seconds
 
 *** DuckDB
 
@@ -239,7 +216,7 @@ This uses the DuckDB backend from the Andromeda duckdb2 branch
 #+end_src
 
 #+RESULTS:
-: DuckDB load time was 1.3 seconds
+: DuckDB load time was 0.4 seconds
 
 ** DB file size on disk
 *** SQLite
@@ -256,7 +233,7 @@ This uses the DuckDB backend from the Andromeda duckdb2 branch
 #+end_src
 
 #+RESULTS:
-: SQLite database file is 178.9 MB
+: SQLite database file is 1212.1 MB
 
 *** DuckDB
 
@@ -271,7 +248,7 @@ This uses the DuckDB backend from the Andromeda duckdb2 branch
 #+end_src
 
 #+RESULTS:
-: Duckdb database file is 71.8 MB
+: Duckdb database file is 25.2 MB
 
 
 
