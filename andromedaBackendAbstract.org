@@ -15,7 +15,7 @@ Number of /batchApply()/ repetitions
 #+NAME: nreps
 | 5      | 
 
-Define list of test functions
+Simulate data and define list of test functions
 
 #+begin_src R :session s1 :dir c:/andromedaDatabaseAbstract 
 
