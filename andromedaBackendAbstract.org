@@ -253,11 +253,78 @@ This uses the DuckDB backend from the Andromeda duckdb2 branch
 
 
 
+* Abstract for OHDSI                                       :ignore:no_export:
+
+** Background
+
+The /Andromeda/ R package is a crucial component of OHDSI's Hades tool stack, allowing analysis of larger-than-memory data objects. The current implementation of /Andromeda/ uses the venerable /SQLite/ as its database back-end. /SQLite/ is a widely deployed database engine that is highly scalable, requires no server process or configuration, and has convenient R interop through /RSQLite/. While SQLite's row oriention is suited for transactional workloads, other databases may offer better analytic performance through column orientation. The purpose of this abstract is to compare the performance of Andromeda's current SQLite back-end with an alternative implementation that uses the DuckDB database. 
+
+** Methods
+
+The maintainer of Andromeda (A.B.) modified the package to use /duckdb-r/ in place of /RSQLite/ (both available on CRAN). We created 2 isolated R environments using /renv/. Lock files are available at github.com/vinci-ohdsi/AndromedaBackendTest. The first used the Andromeda main branch of github.com/OHDSI/Andromeda, and the second used the duckdb2 branch.
+
+*** Artificial Data
+
+We simulated a large database table containing columns for person, covariate ID, and covariate value. All data were randomly generated and without PHI. Three R functions were specified: filtering, calculating mean, and grouping/summarizing. These functions were applied to the database table using Andromeda's /batchApply()/, which uses /dbplyr/ to apply the supplied functions in-database, then results were retrieved as R objects in batches of 100,000. The exercise was repeated 5 times to obtain a distribution of run times. We then computed run times for /saveAndromeda()/, /loadAndromeda()/, and noted the database file sizes on disk. 
+
+*** Real World Data 
+
+Similar to the first exercise, we created 2 R environments within a Dept. of Veterans Affairs secure server. We then ran a model study (Ryan 2024) comparing the incidence of GI bleed with inpatient admission in new users of celecoxib vs. diclofenac. We then ran an analysis specified in /Strategus/ comparing incidence of X in new users of GLP1 ???...
+
+** Results
+#+name: time-results 
+#+begin_src R :session s1 :results output raw :exports results
+
+  s <- readRDS("./sqlite-times.RDS")
+
+  sr <- sprintf("SQLite median (SD) [Figure 1] run times for calculating mean, filtering, and grouping/summarizing were %.01f (%.01f), %.01f (%.01f), %.01f (%.01f). ",
+                median(s$runTimeSeconds[s$fn == 'mean']),
+                sd(s$runTimeSeconds[s$fn == 'mean']),
+                median(s$runTimeSeconds[s$fn == 'filter']),
+                sd(s$runTimeSeconds[s$fn == 'filter']),
+                median(s$runTimeSeconds[s$fn == 'groupSumm']),
+                sd(s$runTimeSeconds[s$fn == 'groupSumm']))
+
+  d <- readRDS("./duckdb-times.RDS")
+
+  dr <- sprintf("Respective DuckDB times were %.01f (%.01f), %.01f (%.01f), %.01f (%.01f).",
+                median(d$runTimeSeconds[d$fn == 'mean']),
+                sd(d$runTimeSeconds[d$fn == 'mean']),
+                median(d$runTimeSeconds[d$fn == 'filter']),
+                sd(d$runTimeSeconds[d$fn == 'filter']),
+                median(d$runTimeSeconds[d$fn == 'groupSumm']),
+                sd(d$runTimeSeconds[d$fn == 'groupSumm']))
+
+  cat(paste(sr, dr), "\n")
+
+#+end_src
+
+#+RESULTS: time-results
+SQLite median (SD) [Figure 1] run times for calculating mean, filtering, and grouping/summarizing were 244.5 (7.6), 244.8 (8.8), 247.4 (7.3).  Respective DuckDB times were 19.1 (1.0), 19.7 (0.3), 23.1 (0.5)
+
+[[./boxplot.jpg]]
+
+#+NAME: results-tbl        
+| Test ID | Execution (hrs) | Study | Database | tidyCovariates | createPs | T-cohort n | C-cohort n |
+|---------+-----------------+-------+----------+----------------+----------+------------+------------|
+|       1 |                 | Coxib | SQLite   |                |          |            |            |
+|       2 |                 | Coxib | DuckDB   |                |          |            |            |
+|       3 |                 | GLP1  | SQLite   |                |          |            |            |
+|       4 |                 | GLP1  | DuckDB   |                |          |            |            |
+
+
+
+
+** References
+Schuemie M, Suchard M, Ryan P (2024). CohortMethod: New-User Cohort Method with Large Scale Propensity and Outcome
+Models. R package version 5.4.0,
+https://github.com/OHDSI/CohortMethod
 
 
 * Project management                                              :no_export:
 :LOGBOOK:
-CLOCK: [2025-01-07 Tue 09:47]
+CLOCK: [2025-01-08 Wed 09:00]
+CLOCK: [2025-01-07 Tue 09:47]--[2025-01-07 Tue 17:21] =>  7:34
 CLOCK: [2025-01-06 Mon 12:32]--[2025-01-06 Mon 17:00]  =>  4:28
 CLOCK: [2025-01-06 Mon 08:58]--[2025-01-06 Mon 12:23] =>  3:25
 CLOCK: [2024-12-26 Thu 16:31]--[2024-12-26 Thu 17:00] =>  0:29
